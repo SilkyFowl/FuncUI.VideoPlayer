@@ -7,3 +7,5 @@ nuget Avalonia.Diagnostics 0.10.12
 nuget JaggerJo.Avalonia.FuncUI 0.5.0
 nuget JaggerJo.Avalonia.FuncUI.DSL 0.5.0
 nuget JaggerJo.Avalonia.FuncUI.Elmish 0.5.0
+nuget LibVLCSharp
+nuget VideoLAN.LibVLC.Windows
