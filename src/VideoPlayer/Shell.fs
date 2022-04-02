@@ -13,7 +13,7 @@ module Shell =
             DockPanel.create [
 
                 DockPanel.children [
-                    TabControl.create [ 
+                    TabControl.create [
                         TabControl.tabStripPlacement Dock.Top
                         TabControl.viewItems [
                             TabItem.create [
@@ -23,6 +23,10 @@ module Shell =
                             TabItem.create [
                                 TabItem.header "About"
                                 TabItem.content About.view
+                            ]
+                            TabItem.create [
+                                TabItem.header "VideoPlayer"
+                                TabItem.content VideoPlayer.view
                             ]
                         ]
                     ]
