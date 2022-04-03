@@ -25,8 +25,8 @@ module Shell =
                                 TabItem.content About.view
                             ]
                             TabItem.create [
-                                TabItem.header "VideoPlayer"
-                                TabItem.content VideoPlayer.view
+                                TabItem.header "VideoPlayer-VideoView"
+                                TabItem.content VideoPlayer.viewByVideoView
                             ]
                         ]
                     ]

@@ -6,3 +6,4 @@ JaggerJo.Avalonia.FuncUI.Elmish
 FSharp.Core
 LibVLCSharp
 VideoLAN.LibVLC.Windows
+LibVLCSharp.Avalonia
