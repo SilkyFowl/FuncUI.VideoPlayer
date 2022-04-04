@@ -25,6 +25,9 @@ module Helper =
         f x
         x
 
+module Observable =
+    let mergeSeq (sources: IObservable<_> seq) = Observable.Merge sources
+
 module LibVLCSharp =
     let libVLC = lazy new LibVLC(true)
 
@@ -98,6 +101,68 @@ type VideoView with
         AttrBuilder<'t>
             .CreateProperty<_>(VideoView.MediaPlayerProperty, value, ValueNone)
 
+module LibVLCSharpComponent =
+
+    let seekBar id (player: MediaPlayer) writablePosition onPositionChanged attrs =
+        Component.create (
+            id,
+            fun ctx ->
+                let minValue = 0.0
+                let maxValue = 1.0
+
+                let outlet = ctx.useState (Unchecked.defaultof<Slider>, false)
+                let isPressed = ctx.useState (false, false)
+                let position = ctx.usePassed writablePosition
+
+                let handler _ : unit = position.Current |> onPositionChanged
+
+                ctx.useEffect (handler, [ EffectTrigger.AfterChange position ])
+
+                ctx.useEffect (
+                    (fun _ ->
+                        [ player.Opening
+                          |> Observable.merge player.Playing
+                          |> Observable.merge player.Paused
+                          |> Observable.merge player.EndReached
+                          |> Observable.merge player.Stopped
+                          |> Observable.map (fun _ -> float player.Position)
+
+                          player.PositionChanged
+                          |> Observable.map (fun e ->
+                              if player.State = VLCState.Ended then
+                                  maxValue
+                              else
+                                  float e.Position |> max minValue) ]
+                        |> Observable.mergeSeq
+                        |> Observable.subscribe position.Set),
+                    [ EffectTrigger.AfterInit ]
+                )
+
+                ctx.attrs attrs
+
+                View.createWithOutlet
+                    outlet.Set
+                    Slider.create
+                    [ Slider.minimum minValue
+                      Slider.maximum maxValue
+
+                      if player.IsSeekable then
+                          double position.Current
+                      else
+                          minValue
+                      |> Slider.value
+
+                      Slider.onPointerPressed (fun _ -> isPressed.Set true)
+                      Slider.onPointerReleased (fun _ ->
+                          if player.IsSeekable then
+                              player.Position <- float32 outlet.Current.Value
+                              onPositionChanged outlet.Current.Value
+                          else
+                              outlet.Current.Value <- minValue
+
+                          isPressed.Set false) ]
+        )
+
 
 module VideoPlayer =
     let viewByVideoView =
@@ -112,6 +177,8 @@ module VideoPlayer =
                     |> Media.create
                     |> tap ctx.trackDisposable
 
+                let position = ctx.useState 0.0
+
                 DockPanel.create [
                     DockPanel.verticalAlignment VerticalAlignment.Stretch
                     DockPanel.horizontalAlignment HorizontalAlignment.Stretch
@@ -125,10 +192,7 @@ module VideoPlayer =
                             Button.dock Dock.Bottom
                         ]
 
-                        TextBlock.create [
-                            TextBlock.dock Dock.Bottom
-                            TextBlock.text $"Hwnd: {mp.Hwnd}"
-                        ]
+                        LibVLCSharpComponent.seekBar "player" mp position ignore [Component.dock Dock.Bottom]
 
                         VideoView.create [
                             VideoView.verticalAlignment VerticalAlignment.Stretch
