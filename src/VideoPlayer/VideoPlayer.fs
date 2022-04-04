@@ -172,27 +172,74 @@ module VideoPlayer =
 
                 let mp = MediaPlayer.create () |> tap ctx.trackDisposable
 
-                let media =
-                    Uri "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"
-                    |> Media.create
-                    |> tap ctx.trackDisposable
-
                 let position = ctx.useState 0.0
+
+                let path =
+                    ctx.useState (
+                        "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
+                        false
+                    )
+
+                let errors = ctx.useState ""
+
+                let validate text =
+                    backgroundTask {
+                        if String.IsNullOrEmpty path.Current then
+                            return Error "NullOrEmpty"
+                        else
+                            let media = Uri text |> Media.create
+
+
+                            let opt =
+                                MediaParseOptions.ParseLocal
+                                ||| MediaParseOptions.ParseNetwork
+
+                            match! media.Parse(opt, timeout = 3000) with
+                            | MediaParsedStatus.Done -> return Ok media
+                            | other -> return Error $"Parse {other}"
+                    }
 
                 DockPanel.create [
                     DockPanel.verticalAlignment VerticalAlignment.Stretch
                     DockPanel.horizontalAlignment HorizontalAlignment.Stretch
                     DockPanel.children [
-                        Button.create [
-                            Button.width 64
-                            Button.horizontalAlignment HorizontalAlignment.Center
-                            Button.horizontalContentAlignment HorizontalAlignment.Center
-                            Button.content "Play"
-                            Button.onClick (fun _ -> mp.Play(media) |> ignore)
-                            Button.dock Dock.Bottom
+                        Grid.create [
+                            Grid.dock Dock.Bottom
+                            Grid.columnDefinitions "Auto,*"
+                            Grid.rowDefinitions "Auto,32"
+                            Grid.children [
+                                Button.create [
+                                    Button.width 64
+                                    Button.column 0
+                                    Button.row 0
+                                    Button.horizontalAlignment HorizontalAlignment.Center
+                                    Button.horizontalContentAlignment HorizontalAlignment.Center
+                                    Button.content "Play"
+                                    Button.onClick (fun _ ->
+                                        task {
+                                            match! validate path.Current with
+                                            | Ok media ->
+                                                errors.Set ""
+                                                mp.Play media |> ignore
+                                            | Error ex -> errors.Set ex
+                                        }
+                                        |> ignore)
+                                    Button.dock Dock.Bottom
+                                ]
+                                TextBox.create [
+                                    TextBox.row 0
+                                    TextBox.rowSpan 2
+                                    TextBox.column 1
+                                    TextBox.verticalAlignment VerticalAlignment.Top
+                                    TextBox.text path.Current
+                                    if not <| String.IsNullOrEmpty errors.Current then
+                                        TextBox.errors [ errors.Current ]
+                                    TextBox.onTextChanged path.Set
+                                ]
+                            ]
                         ]
 
-                        LibVLCSharpComponent.seekBar "player" mp position ignore [Component.dock Dock.Bottom]
+                        LibVLCSharpComponent.seekBar "player" mp position ignore [ Component.dock Dock.Bottom ]
 
                         VideoView.create [
                             VideoView.verticalAlignment VerticalAlignment.Stretch
