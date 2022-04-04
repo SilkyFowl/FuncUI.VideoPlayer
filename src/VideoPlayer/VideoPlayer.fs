@@ -32,7 +32,7 @@ module MediaPlayer =
     open LibVLCSharp
     let create () = new MediaPlayer(libVLC.Value)
 
-    let inline attachHandle (mediaPlayer: MediaPlayer) (platformHandle: IPlatformHandle) =
+    let inline attachHandle (platformHandle: IPlatformHandle) (mediaPlayer: MediaPlayer) =
         match Environment.OSVersion.Platform with
         | PlatformID.Win32NT -> mediaPlayer.Hwnd <- platformHandle.Handle
         | PlatformID.MacOSX -> mediaPlayer.XWindow <- uint platformHandle.Handle
@@ -57,11 +57,10 @@ type VideoView() =
     let platformHandleSub = new BehaviorSubject<IPlatformHandle option>(None)
 
     let attacher =
-        mediaPlayerSub.CombineLatest platformHandleSub
+        platformHandleSub.CombineLatest mediaPlayerSub
         |> Observable.subscribe (function
-            | Some mp, Some p -> MediaPlayer.attachHandle mp p
+            | Some p, Some mp -> MediaPlayer.attachHandle p mp
             | _ -> ())
-
 
     member x.MediaPlayer
         with get () =
