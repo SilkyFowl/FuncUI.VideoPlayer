@@ -108,12 +108,14 @@ module LibVLCSharpComponent =
 
 
 module VideoPlayer =
+    let player = lazy (new State<_>(MediaPlayer.create ()))
+
     let viewByVideoView =
         Component.create (
             "VideoPlayer-VideoView",
             fun ctx ->
 
-                let mp = MediaPlayer.create () |> ctx.useState
+                let mp = ctx.usePassedRead player.Value
 
                 let position = ctx.useState 0.0
 
