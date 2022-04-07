@@ -18,6 +18,7 @@ open Avalonia.Layout
 open Avalonia.FuncUI.Builder
 open Avalonia.FuncUI.Types
 
+open LibVLCSharp.Avalonia.FuncUI
 
 [<AutoOpen>]
 module Helper =
@@ -25,91 +26,33 @@ module Helper =
         f x
         x
 
-module Observable =
-    let mergeSeq (sources: IObservable<_> seq) = Observable.Merge sources
-
 module LibVLCSharp =
-    let libVLC = lazy new LibVLC(true)
+    let libVLC =
+        lazy
+            (let instance = new LibVLC(true)
+             new State<_>(instance) :> IReadable<_>)
 
 module MediaPlayer =
     open LibVLCSharp
-    let create () = new MediaPlayer(libVLC.Value)
-
-    let inline attachHandle (platformHandle: IPlatformHandle) (mediaPlayer: MediaPlayer) =
-        match Environment.OSVersion.Platform with
-        | PlatformID.Win32NT -> mediaPlayer.Hwnd <- platformHandle.Handle
-        | PlatformID.MacOSX -> mediaPlayer.XWindow <- uint platformHandle.Handle
-        | PlatformID.Unix -> mediaPlayer.NsObject <- platformHandle.Handle
-        | _ -> ()
-
-    let inline detachHandle (mediaPlayer: MediaPlayer) =
-        match Environment.OSVersion.Platform with
-        | PlatformID.Win32NT -> mediaPlayer.Hwnd <- IntPtr.Zero
-        | PlatformID.MacOSX -> mediaPlayer.XWindow <- 0u
-        | PlatformID.Unix -> mediaPlayer.NsObject <- IntPtr.Zero
-        | _ -> ()
+    let create () = new MediaPlayer(libVLC.Value.Current)
 
 module Media =
     open LibVLCSharp
-    let create uri = new Media(libVLC.Value, uri = uri)
 
-type VideoView() =
-    inherit NativeControlHost()
-
-    let mediaPlayerSub = new BehaviorSubject<MediaPlayer option>(None)
-    let platformHandleSub = new BehaviorSubject<IPlatformHandle option>(None)
-
-    let attacher =
-        platformHandleSub.CombineLatest mediaPlayerSub
-        |> Observable.subscribe (function
-            | Some p, Some mp -> MediaPlayer.attachHandle p mp
-            | _ -> ())
-
-    member x.MediaPlayer
-        with get () =
-            if mediaPlayerSub.IsDisposed then
-                None
-            else
-                mediaPlayerSub.Value
-        and set value = mediaPlayerSub.OnNext value
-
-    static member MediaPlayerProperty =
-        AvaloniaProperty.RegisterDirect<VideoView, MediaPlayer option>(
-            nameof MediaPlayer,
-            (fun o -> o.MediaPlayer),
-            (fun o v -> o.MediaPlayer <- v),
-            defaultBindingMode = BindingMode.TwoWay
-        )
-
-    override _.CreateNativeControlCore(parent) =
-        base.CreateNativeControlCore parent
-        |> tap (Some >> platformHandleSub.OnNext)
-
-    override _.DestroyNativeControlCore(control) =
-        attacher.Dispose()
-
-        Option.iter MediaPlayer.detachHandle mediaPlayerSub.Value
-        platformHandleSub.OnNext None
-
-        base.DestroyNativeControlCore control
-
-module VideoView =
-    let create (attrs: IAttr<VideoView> list) : IView<VideoView> = ViewBuilder.Create<VideoView>(attrs)
-
-type VideoView with
-    static member mediaPlayer<'t when 't :> VideoView> value =
-        AttrBuilder<'t>
-            .CreateProperty<_>(VideoView.MediaPlayerProperty, value, ValueNone)
+    let create uri =
+        new Media(libVLC.Value.Current, uri = uri)
 
 module LibVLCSharpComponent =
 
-    let seekBar id (player: MediaPlayer) writablePosition onPositionChanged attrs =
+    let seekBar id (player: IReadable<MediaPlayer>) writablePosition onPositionChanged attrs =
         Component.create (
             id,
             fun ctx ->
                 let minValue = 0.0
                 let maxValue = 1.0
 
+                let player = ctx.usePassedRead player
+                let player = player.Current
                 let outlet = ctx.useState (Unchecked.defaultof<Slider>, false)
                 let isPressed = ctx.useState (false, false)
                 let position = ctx.usePassed writablePosition
@@ -138,12 +81,12 @@ module LibVLCSharpComponent =
                     [ EffectTrigger.AfterInit ]
                 )
 
-                ctx.attrs attrs
-
                 View.createWithOutlet
                     outlet.Set
                     Slider.create
-                    [ Slider.minimum minValue
+                    [ yield! attrs
+
+                      Slider.minimum minValue
                       Slider.maximum maxValue
 
                       if player.IsSeekable then
@@ -170,7 +113,7 @@ module VideoPlayer =
             "VideoPlayer-VideoView",
             fun ctx ->
 
-                let mp = MediaPlayer.create () |> tap ctx.trackDisposable
+                let mp = MediaPlayer.create () |> ctx.useState
 
                 let position = ctx.useState 0.0
 
@@ -220,7 +163,7 @@ module VideoPlayer =
                                             match! validate path.Current with
                                             | Ok media ->
                                                 errors.Set ""
-                                                mp.Play media |> ignore
+                                                mp.Current.Play media |> ignore
                                             | Error ex -> errors.Set ex
                                         }
                                         |> ignore)
@@ -239,12 +182,28 @@ module VideoPlayer =
                             ]
                         ]
 
-                        LibVLCSharpComponent.seekBar "player" mp position ignore [ Component.dock Dock.Bottom ]
+
+
 
                         VideoView.create [
+                            VideoView.isVideoVisible mp.Current.IsPlaying
+
                             VideoView.verticalAlignment VerticalAlignment.Stretch
                             VideoView.horizontalAlignment HorizontalAlignment.Stretch
-                            VideoView.mediaPlayer (Some mp)
+                            VideoView.mediaPlayer (Some mp.Current)
+                            VideoView.content (
+                                DockPanel.create [
+                                    DockPanel.children [
+                                        LibVLCSharpComponent.seekBar
+                                            "player"
+                                            mp
+                                            position
+                                            ignore
+                                            [ Slider.verticalAlignment VerticalAlignment.Bottom
+                                              Slider.dock Dock.Bottom ]
+                                    ]
+                                ]
+                            )
                         ]
                     ]
                 ]

@@ -100,35 +100,26 @@ module NativeModule =
 module Observable =
     open System
     open System.Reactive.Linq
-    open System.Reactive.Subjects
-    open System.Reactive.Disposables
 
     let inline mergeSeq (sources: IObservable<_> seq) = Observable.Merge sources
 
-    let  combineLatest4With a b c d resultSelector =
-        Observable.CombineLatest(a, b, c, d, resultSelector)
+    let inline combineLatest4With (selector: 'a -> 'b -> 'c -> 'd -> 'obs) (a, b, c, d) =
+        Observable.CombineLatest(a, b, c, d, selector)
 
     let inline combineLatest3 a b c =
         Observable.CombineLatest(a, b, c, (fun a b c -> a, b, c))
-
-
+    let inline combineLatestWith (selector: 'a -> 'b -> 'obs) a b =
+        Observable.CombineLatest(a,b, selector)
 
 module Subject =
-    open System
-    open System.Reactive.Linq
     open System.Reactive.Subjects
-    open System.Reactive.Disposables
 
     let behavior sources = new BehaviorSubject<_>(sources)
 
 module CompositeDisposable =
-    open System
-    open System.Reactive.Linq
-    open System.Reactive.Subjects
     open System.Reactive.Disposables
 
     let create () = new CompositeDisposable()
-
 
 module WindowBase =
     open Avalonia.Controls

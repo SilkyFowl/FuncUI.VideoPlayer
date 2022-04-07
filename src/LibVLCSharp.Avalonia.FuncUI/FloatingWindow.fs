@@ -2,15 +2,11 @@ namespace LibVLCSharp.Avalonia.FuncUI
 
 open Avalonia
 open Avalonia.Controls
-open Avalonia.Controls.Templates
 open Avalonia.Controls.Primitives
 open Avalonia.Interactivity
 open Avalonia.Media
-open Avalonia.Metadata
 open Avalonia.Layout
 open Avalonia.VisualTree
-open Avalonia.Win32
-open Avalonia.Threading
 
 open Avalonia.FuncUI
 open Avalonia.FuncUI.DSL
@@ -18,9 +14,6 @@ open Avalonia.FuncUI.Types
 open Avalonia.FuncUI.Builder
 
 open System
-open System.Reactive.Linq
-
-open NativeModule
 
 type FloatingWindow() =
     inherit Window
@@ -33,37 +26,33 @@ type FloatingWindow() =
             ShowInTaskbar = false
         )
 
-    let mutable owner = Option<IVisual>.None
-
     let getVisualRoot (visual: IVisual) = visual.VisualRoot :?> WindowBase
 
-    member x.Owner
-        with get () = owner
-        and set value = owner <- value
+    member val Owner = Option<IVisual>.None with get, set
 
     member x.RaizeOwnerEvent e =
         match x.Owner with
         | Some (:? IInteractive as i) -> i.RaiseEvent e
         | _ -> ()
 
-    override this.OnInitialized() =
+    override x.OnInitialized() =
         let callback e =
-            match this.Content with
-            | :? IControl as c when not c.IsPointerOver && this.IsPointerOver -> this.RaizeOwnerEvent e
+            match x.Content with
+            | :? IControl as c when not c.IsPointerOver && x.IsPointerOver -> x.RaizeOwnerEvent e
             | _ -> ()
 
-        this.PointerPressed |> Observable.add callback
+        x.PointerPressed |> Observable.add callback
 
-        this.PointerReleased |> Observable.add callback
+        x.PointerReleased |> Observable.add callback
 
-        this.GetPropertyChangedObservable WindowBase.ContentProperty
+        x.GetPropertyChangedObservable WindowBase.ContentProperty
         |> Observable.add (fun e ->
             match e.NewValue with
-            | :? IView as v -> this.Content <- VirtualDom.VirtualDom.create v
+            | :? IView as v -> x.Content <- VirtualDom.VirtualDom.create v
             | _ -> ())
 
 #if DEBUG
-        this.AttachDevTools()
+        x.AttachDevTools()
 #endif
 
 type FloatingOwnerHost() =
@@ -124,23 +113,21 @@ type FloatingOwnerHost() =
 
         let root = x.GetVisualRoot() :?> WindowBase
 
-        Observable.CombineLatest(
-            x.GetObservable FloatingOwnerHost.ContentProperty,
-            x.GetObservable FloatingOwnerHost.BoundsProperty,
-            root.PositionChanged,
-            root.GetObservable Window.WindowStateProperty,
-            fun content hostBounds _ _ ->
-                let manager =
-                    match content with
-                    | null -> None
-                    | _ ->
-                        floatingWindow.GetVisualDescendants()
-                        |> Seq.tryPick (function
-                            | :? VisualLayerManager as m -> Some m
-                            | _ -> None)
+        (x.GetObservable FloatingOwnerHost.ContentProperty,
+         x.GetObservable FloatingOwnerHost.BoundsProperty,
+         root.PositionChanged,
+         root.GetObservable Window.WindowStateProperty)
+        |> Observable.combineLatest4With (fun content hostBounds _ _ ->
+            let manager =
+                match content with
+                | null -> None
+                | _ ->
+                    floatingWindow.GetVisualDescendants()
+                    |> Seq.tryPick (function
+                        | :? VisualLayerManager as m -> Some m
+                        | _ -> None)
 
-                manager, hostBounds
-        )
+            manager, hostBounds)
         |> Observable.subscribe (function
             | None, _ -> ()
             | Some manager, hostBounds -> x.UpdateFloatingCore manager hostBounds)
@@ -171,10 +158,13 @@ type FloatingOwnerHost() =
                 floating.Hide())
         |> hostDisposables.Add
 
-        x.InitFloatingWindow floatingWindowSub.Value
+    override x.OnAttachedToVisualTree e =
+        isAttachedSub.OnNext true
+        base.OnAttachedToVisualTree e
 
-    override x.OnAttachedToVisualTree e = isAttachedSub.OnNext true
-    override x.OnDetachedFromVisualTree e = isAttachedSub.OnNext false
+    override x.OnDetachedFromVisualTree e =
+        isAttachedSub.OnNext false
+        base.OnDetachedFromVisualTree e
 
     member x.FloatingWindow
         with get () = floatingWindowSub.Value
@@ -194,8 +184,6 @@ type FloatingOwnerHost() =
             (fun o -> o.FloatingWindow),
             (fun o v -> o.FloatingWindow <- v)
         )
-
-    override x.OnPropertyChanged change = base.OnPropertyChanged change
 
 module FloatingOwnerHost =
     let create (attrs) =

@@ -12,5 +12,8 @@
     <Compile Include="Program.fs" />
     <AvaloniaResource Include="**\*.xaml" />
   </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\LibVLCSharp.Avalonia.FuncUI\LibVLCSharp.Avalonia.FuncUI.fsproj" />
+  </ItemGroup>
   <Import Project="..\..\.paket\Paket.Restore.targets" />
 </Project>

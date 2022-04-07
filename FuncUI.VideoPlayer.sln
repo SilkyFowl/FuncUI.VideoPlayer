@@ -12,6 +12,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{CB9AA7EC-DB2
 EndProject
 Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "VideoPlayer", "src\VideoPlayer\VideoPlayer.fsproj", "{9BC2FF62-F586-4643-A0DB-490E3BBD2A24}"
 EndProject
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "LibVLCSharp.Avalonia.FuncUI", "src\LibVLCSharp.Avalonia.FuncUI\LibVLCSharp.Avalonia.FuncUI.fsproj", "{ABA1BF82-D60B-4C00-AECC-8AC1059F1AA7}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -25,8 +27,13 @@ Global
 		{9BC2FF62-F586-4643-A0DB-490E3BBD2A24}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{9BC2FF62-F586-4643-A0DB-490E3BBD2A24}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{9BC2FF62-F586-4643-A0DB-490E3BBD2A24}.Release|Any CPU.Build.0 = Release|Any CPU
+		{ABA1BF82-D60B-4C00-AECC-8AC1059F1AA7}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{ABA1BF82-D60B-4C00-AECC-8AC1059F1AA7}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{ABA1BF82-D60B-4C00-AECC-8AC1059F1AA7}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{ABA1BF82-D60B-4C00-AECC-8AC1059F1AA7}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{9BC2FF62-F586-4643-A0DB-490E3BBD2A24} = {CB9AA7EC-DB2A-4DA6-8000-679E6ED5F52C}
+		{ABA1BF82-D60B-4C00-AECC-8AC1059F1AA7} = {CB9AA7EC-DB2A-4DA6-8000-679E6ED5F52C}
 	EndGlobalSection
 EndGlobal
