@@ -185,8 +185,6 @@ module VideoPlayerComponent =
                         VideoView.create [
                             VideoView.isVideoVisible mp.Current.IsPlaying
 
-                            VideoView.verticalAlignment VerticalAlignment.Stretch
-                            VideoView.horizontalAlignment HorizontalAlignment.Stretch
                             VideoView.mediaPlayer (Some mp.Current)
                             VideoView.content (
                                 DockPanel.create [
@@ -208,6 +206,7 @@ module VideoPlayerComponent =
 
 module VideoPlayerElmish =
     open global.Elmish
+
     type State =
         { player: MediaPlayer
           playerState: Deferred<Result<unit, string>>
@@ -242,69 +241,66 @@ module VideoPlayerElmish =
               path = "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4" }
 
     let cmp () =
-        Component (fun ctx ->
+        Component.create (
+            "player-elmish",
+            (fun ctx ->
 
-            let state, dispatch = ctx.useElmish (init.Value, update)
-            let playerState, player = ctx.useMapRead state (fun s -> s.player)
-            let position = ctx.useState 0.0
+                let state, dispatch = ctx.useElmish (init.Value, update)
+                let _, player = ctx.useMapRead state (fun s -> s.player)
 
-            DockPanel.create [
-                DockPanel.verticalAlignment VerticalAlignment.Stretch
-                DockPanel.horizontalAlignment HorizontalAlignment.Stretch
-                DockPanel.children [
-                    Grid.create [
-                        Grid.dock Dock.Bottom
-                        Grid.columnDefinitions "Auto,*"
-                        Grid.rowDefinitions "Auto,32"
-                        Grid.children [
-                            Button.create [
-                                Button.width 64
-                                Button.column 0
-                                Button.row 0
-                                Button.horizontalAlignment HorizontalAlignment.Center
-                                Button.horizontalContentAlignment HorizontalAlignment.Center
-                                Button.content "Play"
-                                Button.onClick (fun _ -> Started() |> Play |> dispatch)
-                                Button.dock Dock.Bottom
-                            ]
-                            TextBox.create [
-                                TextBox.row 0
-                                TextBox.rowSpan 2
-                                TextBox.column 1
-                                TextBox.verticalAlignment VerticalAlignment.Top
-                                TextBox.text state.Current.path
-                                match state.Current.playerState with
-                                | Resolved (Error error) -> TextBox.errors [ error ]
-                                | _ -> ()
-                                TextBox.onTextChanged (SetPath >> dispatch)
-                            ]
-                        ]
-                    ]
+                let videoViewVisible = ctx.useState false
 
-                    VideoView.create [
-                        VideoView.isVideoVisible player.IsPlaying
+                ctx.useEffect (
+                    (fun _ ->
+                        player.Playing
+                        |> Observable.subscribe (fun _ -> videoViewVisible.Set true)),
+                    [ EffectTrigger.AfterInit ]
+                )
 
-                        VideoView.verticalAlignment VerticalAlignment.Stretch
-                        VideoView.horizontalAlignment HorizontalAlignment.Stretch
-                        VideoView.mediaPlayer (Some player)
-                        // content がないとビデオが表示されない
-                        // ・規定値で空のPanelを設定することで何とかなるか？
-                        // ・それでもダメなら(表示に関与する何かの性質をもつ)SeekBerのおかげと考えられる
-                        VideoView.content (
-                            DockPanel.create [
-                                DockPanel.children [
-                                    LibVLCSharpComponent.seekBar
-                                        "player"
-                                        playerState
-                                        position
-                                        ignore
-                                        [ Slider.verticalAlignment VerticalAlignment.Bottom
-                                          Slider.dock Dock.Bottom ]
+                ctx.useEffect (
+                    (fun _ ->
+                        player.Stopped
+                        |> Observable.subscribe (fun _ -> videoViewVisible.Set false)),
+                    [ EffectTrigger.AfterInit ]
+                )
+
+                DockPanel.create [
+                    DockPanel.verticalAlignment VerticalAlignment.Stretch
+                    DockPanel.horizontalAlignment HorizontalAlignment.Stretch
+                    DockPanel.children [
+                        Grid.create [
+                            Grid.dock Dock.Bottom
+                            Grid.columnDefinitions "Auto,*"
+                            Grid.rowDefinitions "Auto,32"
+                            Grid.children [
+                                Button.create [
+                                    Button.width 64
+                                    Button.column 0
+                                    Button.row 0
+                                    Button.horizontalAlignment HorizontalAlignment.Center
+                                    Button.horizontalContentAlignment HorizontalAlignment.Center
+                                    Button.content "Play"
+                                    Button.onClick (fun _ -> Started() |> Play |> dispatch)
+                                    Button.dock Dock.Bottom
+                                ]
+                                TextBox.create [
+                                    TextBox.row 0
+                                    TextBox.rowSpan 2
+                                    TextBox.column 1
+                                    TextBox.verticalAlignment VerticalAlignment.Top
+                                    TextBox.text state.Current.path
+                                    match state.Current.playerState with
+                                    | Resolved (Error error) -> TextBox.errors [ error ]
+                                    | _ -> ()
+                                    TextBox.onTextChanged (SetPath >> dispatch)
                                 ]
                             ]
-                        )
-                    ]
-                ]
-            ]
+                        ]
 
+                        VideoView.create [
+                            VideoView.isVideoVisible videoViewVisible.Current
+                            VideoView.mediaPlayer (Some player)
+                        ]
+                    ]
+                ])
         )

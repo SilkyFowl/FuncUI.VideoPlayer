@@ -55,8 +55,8 @@ module ComponentExtension =
             let y, current = this.useMap x mapping
             y :> IReadable<_>, current
 
-        member this.useElmish<'Model, 'Msg>(init: 'Model, update) =
-            let writableModel = this.useState (init, false)
+        member this.useElmish<'Model, 'Msg>(init: 'Model, update, ?renderOnChange) =
+            let writableModel = this.useState (init, defaultArg renderOnChange true)
             let state = ElmishState<'Model, 'Msg>(writableModel, update)
 
             writableModel :> IReadable<'Model>, state.Dispatch
