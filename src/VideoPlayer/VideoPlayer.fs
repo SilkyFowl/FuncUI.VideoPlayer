@@ -39,8 +39,25 @@ module MediaPlayer =
 module Media =
     open LibVLCSharp
 
-    let create uri =
+    let ofUri uri =
         new Media(libVLC.Value.Current, uri = uri)
+
+    let ofPath text =
+        backgroundTask {
+            if String.IsNullOrEmpty text then
+                return Error "NullOrEmpty"
+            else
+                let media = Uri text |> ofUri
+
+
+                let opt =
+                    MediaParseOptions.ParseLocal
+                    ||| MediaParseOptions.ParseNetwork
+
+                match! media.Parse(opt, timeout = 3000) with
+                | MediaParsedStatus.Done -> return Ok media
+                | other -> return Error $"Parse {other}"
+        }
 
 module LibVLCSharpComponent =
 
@@ -107,10 +124,10 @@ module LibVLCSharpComponent =
         )
 
 
-module VideoPlayer =
+module VideoPlayerComponent =
     let player = lazy (new State<_>(MediaPlayer.create ()))
 
-    let viewByVideoView =
+    let view =
         Component.create (
             "VideoPlayer-VideoView",
             fun ctx ->
@@ -126,23 +143,6 @@ module VideoPlayer =
                     )
 
                 let errors = ctx.useState ""
-
-                let validate text =
-                    backgroundTask {
-                        if String.IsNullOrEmpty path.Current then
-                            return Error "NullOrEmpty"
-                        else
-                            let media = Uri text |> Media.create
-
-
-                            let opt =
-                                MediaParseOptions.ParseLocal
-                                ||| MediaParseOptions.ParseNetwork
-
-                            match! media.Parse(opt, timeout = 3000) with
-                            | MediaParsedStatus.Done -> return Ok media
-                            | other -> return Error $"Parse {other}"
-                    }
 
                 DockPanel.create [
                     DockPanel.verticalAlignment VerticalAlignment.Stretch
@@ -162,7 +162,7 @@ module VideoPlayer =
                                     Button.content "Play"
                                     Button.onClick (fun _ ->
                                         task {
-                                            match! validate path.Current with
+                                            match! Media.ofPath path.Current with
                                             | Ok media ->
                                                 errors.Set ""
                                                 mp.Current.Play media |> ignore
@@ -209,4 +209,158 @@ module VideoPlayer =
                         ]
                     ]
                 ]
+        )
+
+module VideoPlayerElmish =
+    open Avalonia.FuncUI.Elmish
+    open global.Elmish
+
+    type ElmishState<'Model, 'Msg>(writableModel: IWritable<'Model>, update) =
+        member _.Model = writableModel.Current
+        member _.WritableModel = writableModel
+        member _.Update: 'Msg -> 'Model -> 'Model * Cmd<'Msg> = update
+
+        member this.Dispatch(msg: 'Msg) =
+            let model, cmd = this.Update msg this.Model
+
+            for sub in cmd do
+                sub this.Dispatch
+
+            writableModel.Set model
+
+    type IComponentContext with
+        // TODO: useLazyを作ろう
+
+        member inline this.useMap (x: IReadable<'t>) mapping =
+            let x = this.usePassedRead (x, false)
+            let y = (mapping >> this.useState) x.Current
+
+            this.useEffect (
+                (fun _ ->
+                    let state' = mapping x.Current
+
+                    if y.Current <> state' then y.Set state'),
+                [ EffectTrigger.AfterChange x ]
+            )
+
+            y, y.Current
+
+        member inline this.useMapRead (x: IReadable<'t>) mapping =
+            let y, current = this.useMap x mapping
+            y :> IReadable<_>, current
+
+        member this.useElmish<'Model, 'Msg>(init: 'Model, update) =
+            let writableModel = this.useState (init, false)
+            let state = ElmishState<'Model, 'Msg>(writableModel, update)
+
+            writableModel :> IReadable<'Model>, state.Dispatch
+
+    type Deferred<'t> =
+        | HasNotStartedYet
+        | InProgress
+        | Resolved of 't
+
+    type AsyncOperationStatus<'args, 't> =
+        | Started of 'args
+        | Finished of 't
+
+    type State =
+        { player: MediaPlayer
+          playerState: Deferred<Result<unit, string>>
+          path: string }
+
+    type Msg =
+        | Play of AsyncOperationStatus<unit, Result<unit, string>>
+        | SetPath of string
+
+    let update msg state =
+        match msg with
+        | Play (Started _) when state.playerState = InProgress -> state, Cmd.none
+        | Play (Started _) ->
+            { state with playerState = InProgress },
+            task {
+                match! Media.ofPath state.path with
+                | Ok media ->
+                    if state.player.Play media then
+                        return Ok() |> Finished |> Play
+                    else
+                        return Error "Play Failed" |> Finished |> Play
+                | Error ex -> return Error ex |> Finished |> Play
+            }
+            |> Cmd.OfTask.result
+        | Play (Finished result) -> { state with playerState = Resolved result }, Cmd.none
+        | SetPath value -> { state with path = value }, Cmd.none
+
+    let init =
+        lazy
+            { player = MediaPlayer.create ()
+              playerState = HasNotStartedYet
+              path = "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4" }
+
+    let cmp () =
+        Component (fun ctx ->
+
+            let state, dispatch = ctx.useElmish (init.Value, update)
+            let playerState, player = ctx.useMapRead state (fun s -> s.player)
+            let position = ctx.useState 0.0
+
+            DockPanel.create [
+                DockPanel.verticalAlignment VerticalAlignment.Stretch
+                DockPanel.horizontalAlignment HorizontalAlignment.Stretch
+                DockPanel.children [
+                    Grid.create [
+                        Grid.dock Dock.Bottom
+                        Grid.columnDefinitions "Auto,*"
+                        Grid.rowDefinitions "Auto,32"
+                        Grid.children [
+                            Button.create [
+                                Button.width 64
+                                Button.column 0
+                                Button.row 0
+                                Button.horizontalAlignment HorizontalAlignment.Center
+                                Button.horizontalContentAlignment HorizontalAlignment.Center
+                                Button.content "Play"
+                                Button.onClick (fun _ -> Started() |> Play |> dispatch)
+                                Button.dock Dock.Bottom
+                            ]
+                            TextBox.create [
+                                TextBox.row 0
+                                TextBox.rowSpan 2
+                                TextBox.column 1
+                                TextBox.verticalAlignment VerticalAlignment.Top
+                                TextBox.text state.Current.path
+                                match state.Current.playerState with
+                                | Resolved (Error error) -> TextBox.errors [ error ]
+                                | _ -> ()
+                                TextBox.onTextChanged (SetPath >> dispatch)
+                            ]
+                        ]
+                    ]
+
+                    VideoView.create [
+                        VideoView.isVideoVisible player.IsPlaying
+
+                        VideoView.verticalAlignment VerticalAlignment.Stretch
+                        VideoView.horizontalAlignment HorizontalAlignment.Stretch
+                        VideoView.mediaPlayer (Some player)
+                        // content がないとビデオが表示されない
+                        // ・規定値で空のPanelを設定することで何とかなるか？
+                        // ・それでもダメなら(表示に関与する何かの性質をもつ)SeekBerのおかげと考えられる
+                        VideoView.content (
+                            DockPanel.create [
+                                DockPanel.children [
+                                    LibVLCSharpComponent.seekBar
+                                        "player"
+                                        playerState
+                                        position
+                                        ignore
+                                        [ Slider.verticalAlignment VerticalAlignment.Bottom
+                                          Slider.dock Dock.Bottom ]
+                                ]
+                            ]
+                        )
+                    ]
+                ]
+            ]
+
         )

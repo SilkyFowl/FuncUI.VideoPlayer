@@ -5,7 +5,7 @@ module Counter =
     open Avalonia.Controls
     open Avalonia.FuncUI.DSL
     open Avalonia.Layout
-    
+
     let view =
         Component.create("Counter",fun ctx ->
             let state = ctx.useState 0

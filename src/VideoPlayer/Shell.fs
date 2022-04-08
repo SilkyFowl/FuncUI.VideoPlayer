@@ -7,9 +7,11 @@ module Shell =
     open Avalonia.FuncUI
     open Avalonia.FuncUI.DSL
     open Avalonia.FuncUI.Hosts
+    open Avalonia.FuncUI.DSL
+    open Avalonia.FuncUI.Builder
 
     let view =
-        Component(fun _ ->
+        Component (fun _ ->
             DockPanel.create [
 
                 DockPanel.children [
@@ -25,14 +27,17 @@ module Shell =
                                 TabItem.content About.view
                             ]
                             TabItem.create [
-                                TabItem.header "VideoPlayer-VideoView"
-                                TabItem.content VideoPlayer.viewByVideoView
+                                TabItem.header "VideoPlayer-Component"
+                                TabItem.content VideoPlayerComponent.view
+                            ]
+                            TabItem.create [
+                                TabItem.header "VideoPlayer-Elmish"
+                                TabItem.content (VideoPlayerElmish.cmp())
                             ]
                         ]
                     ]
                 ]
-            ]
-        )
+            ])
 
     /// This is the main window of your application
     /// you can do all sort of useful things here like setting heights and widths
@@ -40,6 +45,7 @@ module Shell =
     /// Avalonia
     type MainWindow() as this =
         inherit HostWindow()
+
         do
             base.Title <- "Full App"
             base.Width <- 800.0
@@ -50,6 +56,5 @@ module Shell =
 
             this.AttachDevTools()
 
-            //this.VisualRoot.VisualRoot.Renderer.DrawFps <- true
-            //this.VisualRoot.VisualRoot.Renderer.DrawDirtyRects <- true
-
+//this.VisualRoot.VisualRoot.Renderer.DrawFps <- true
+//this.VisualRoot.VisualRoot.Renderer.DrawDirtyRects <- true
