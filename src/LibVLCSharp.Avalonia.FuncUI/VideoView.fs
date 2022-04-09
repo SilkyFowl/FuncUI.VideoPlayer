@@ -13,9 +13,7 @@ open LibVLCSharp.Shared
 open System
 
 
-type VideoView() =
-    inherit FloatingOwnerHost()
-
+module MediaPlayer =
     let isAttached (platformHandle: IPlatformHandle) (mediaPlayer: MediaPlayer) =
         match Environment.OSVersion.Platform with
         | PlatformID.Win32NT -> mediaPlayer.Hwnd = platformHandle.Handle
@@ -39,14 +37,17 @@ type VideoView() =
         | PlatformID.Unix -> mediaPlayer.NsObject <- IntPtr.Zero
         | _ -> ()
 
+type VideoView() =
+    inherit FloatingOwnerHost()
+
     let mutable mediaPlayer = Option<MediaPlayer>.None
     let mutable platformHandle = Option<IPlatformHandle>.None
 
     let onUpdateHandleOrMediaPlayer () =
         match mediaPlayer, platformHandle with
-        | Some mp, Some p when isAttached p mp -> ()
-        | Some mp, Some p -> attachHandle p mp
-        | Some mp, None -> detachHandle mp
+        | Some mp, Some p when MediaPlayer.isAttached p mp -> ()
+        | Some mp, Some p -> MediaPlayer.attachHandle p mp
+        | Some mp, None -> MediaPlayer.detachHandle mp
         | _ -> ()
 
     let nativePresenter =
