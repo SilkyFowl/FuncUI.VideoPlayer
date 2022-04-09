@@ -101,15 +101,12 @@ module Observable =
     open System
     open System.Reactive.Linq
 
-    let inline mergeSeq (sources: IObservable<_> seq) = Observable.Merge sources
+    let inline ignore source = Observable.map ignore source
 
-    let inline combineLatest4With (selector: 'a -> 'b -> 'c -> 'd -> 'obs) (a, b, c, d) =
-        Observable.CombineLatest(a, b, c, d, selector)
+    let inline mergeIgnore a = (ignore >> Observable.merge) a
 
     let inline combineLatest3 a b c =
         Observable.CombineLatest(a, b, c, (fun a b c -> a, b, c))
-    let inline combineLatestWith (selector: 'a -> 'b -> 'obs) a b =
-        Observable.CombineLatest(a,b, selector)
 
 module Subject =
     open System.Reactive.Subjects
@@ -120,6 +117,14 @@ module CompositeDisposable =
     open System.Reactive.Disposables
 
     let create () = new CompositeDisposable()
+
+
+[<AutoOpen>]
+module AvaloniaExtention =
+    open Avalonia
+    let inline (!) property =
+        AvaloniaProperty.op_OnesComplement property
+
 
 module WindowBase =
     open Avalonia.Controls

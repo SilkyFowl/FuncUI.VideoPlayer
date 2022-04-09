@@ -26,9 +26,22 @@ type FloatingWindow() =
             ShowInTaskbar = false
         )
 
+    let mutable visualLayerManager = None
+
     let getVisualRoot (visual: IVisual) = visual.VisualRoot :?> WindowBase
 
     member val Owner = Option<IVisual>.None with get, set
+
+    member x.VisualLayerManager =
+        match visualLayerManager with
+        | Some _ as vm -> vm
+        | None ->
+            x.GetVisualDescendants()
+            |> Seq.tryPick (function
+                | :? VisualLayerManager as m ->
+                    visualLayerManager <- Some m
+                    visualLayerManager
+                | _ -> None)
 
     member x.RaizeOwnerEvent e =
         match x.Owner with
@@ -101,36 +114,23 @@ type FloatingOwnerHost() =
         | _ -> ()
 
     member inline private x.UpdateFloating() =
-        floatingWindowSub.Value.GetVisualDescendants()
-        |> Seq.tryPick (function
-            | :? VisualLayerManager as m -> Some m
-            | _ -> None)
-        |> Option.iter (fun manager -> x.UpdateFloatingCore manager x.Bounds)
+        match floatingWindowSub.Value.VisualLayerManager with
+        | Some manager -> x.UpdateFloatingCore manager x.Bounds
+        | None -> ()
 
     member inline private x.InitFloatingWindow(floatingWindow: FloatingWindow) =
-        floatingWindow.Bind(FloatingWindow.ContentProperty, x.GetObservable FloatingOwnerHost.ContentProperty)
-        |> floatingDisposables.Add
+        floatingWindow[!FloatingWindow.ContentProperty] <- x[!FloatingOwnerHost.ContentProperty]
 
         let root = x.GetVisualRoot() :?> WindowBase
 
-        (x.GetObservable FloatingOwnerHost.ContentProperty,
-         x.GetObservable FloatingOwnerHost.BoundsProperty,
-         root.PositionChanged,
-         root.GetObservable Window.WindowStateProperty)
-        |> Observable.combineLatest4With (fun content hostBounds _ _ ->
-            let manager =
-                match content with
-                | null -> None
-                | _ ->
-                    floatingWindow.GetVisualDescendants()
-                    |> Seq.tryPick (function
-                        | :? VisualLayerManager as m -> Some m
-                        | _ -> None)
-
-            manager, hostBounds)
-        |> Observable.subscribe (function
-            | None, _ -> ()
-            | Some manager, hostBounds -> x.UpdateFloatingCore manager hostBounds)
+        Observable.ignore root.PositionChanged
+        |> Observable.mergeIgnore (root.GetObservable Window.WindowStateProperty)
+        |> Observable.mergeIgnore (x.GetObservable FloatingOwnerHost.ContentProperty)
+        |> Observable.mergeIgnore (x.GetObservable FloatingOwnerHost.BoundsProperty)
+        |> Observable.subscribe (fun _ ->
+            match floatingWindow.VisualLayerManager with
+            | Some manager -> x.UpdateFloatingCore manager x.Bounds
+            | None -> ())
         |> floatingDisposables.Add
 
     override x.OnInitialized() =

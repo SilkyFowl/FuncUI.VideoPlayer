@@ -88,7 +88,7 @@ module LibVLCSharpComponent =
                                   maxValue
                               else
                                   float e.Position |> max minValue) ]
-                        |> Observable.mergeSeq
+                        |> List.reduce Observable.merge
                         |> Observable.subscribe position.Set),
                     [ EffectTrigger.AfterInit ]
                 )
