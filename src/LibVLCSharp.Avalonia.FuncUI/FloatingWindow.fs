@@ -5,6 +5,8 @@ open Avalonia.Controls
 open Avalonia.Controls.Primitives
 open Avalonia.Interactivity
 open Avalonia.Media
+open Avalonia.Platform
+open Avalonia.Win32
 open Avalonia.Layout
 open Avalonia.VisualTree
 
@@ -15,9 +17,51 @@ open Avalonia.FuncUI.Builder
 
 open System
 
+open NativeModule
+
+type FloatingWindowImpl() =
+    inherit WindowImpl()
+
+    static let ownerList = MailboxProcessor.createAgent Map.empty
+
+    let tryGetOwner (x: FloatingWindowImpl) =
+        Map.tryFind x.Handle.Handle
+        |> MailboxProcessor.postAndReply ownerList
+
+    let (|OwnerHandle|_|) (x: FloatingWindowImpl) =
+        tryGetOwner x |> Option.map WindowBase.getHandle
+
+    static member Register (floatingWindow: WindowBase) owner =
+        Map.add floatingWindow.PlatformImpl.Handle.Handle owner
+        |> MailboxProcessor.post ownerList
+
+    override x.WndProc(hWnd, msg, wParam, lParam) =
+        match msg, wParam, x with
+        | WM_NCACTIVATE, Active, OwnerHandle owner ->
+            PostMessage(owner, msg, nativeBool true, 0)
+            |> ignore
+
+            ``base``.WndProc(hWnd, msg, wParam, lParam)
+
+        | WM_NCACTIVATE, Deactive, OwnerHandle (NotEq lParam owner) ->
+
+            PostMessage(owner, msg, wParam, lParam) |> ignore
+
+            ``base``.WndProc(hWnd, msg, wParam, lParam)
+        | _ -> ``base``.WndProc(hWnd, msg, wParam, lParam)
+
+module FloatingWindowImpl =
+    let tryGet () =
+        if Environment.OSVersion.Platform = PlatformID.Win32NT then
+            new FloatingWindowImpl() :> IWindowImpl |> Some
+        else
+            None
+
+
 type FloatingWindow() =
-    inherit Window
+    inherit WindowWrapper
         (
+            FloatingWindowImpl.tryGet (),
             SystemDecorations = SystemDecorations.None,
             TransparencyLevelHint = WindowTransparencyLevel.Transparent,
             Background = Brushes.Transparent,
@@ -69,13 +113,51 @@ type FloatingWindow() =
 #if DEBUG
         x.AttachDevTools()
 #endif
-type FloatingOwnerHost() =
+
+type FloatingWindowOwnerImpl() =
+    inherit WindowImpl()
+
+    let getOwnerHandle (f: FloatingWindow) =
+        match f.Owner with
+        | Some o ->
+            o.VisualRoot :?> WindowBase
+            |> WindowBase.getHandle
+        | None -> IntPtr.Zero
+
+    let isToClientFloating (window: WindowBase) handle (ownerImpl: WindowImpl) =
+        match window with
+        | :? FloatingWindow as f ->
+            WindowBase.getHandle f = handle
+            && getOwnerHandle f = ownerImpl.Handle.Handle
+        | _ -> false
+
+    let (|ToClientFloating|_|) (ownerImpl: WindowImpl, handle) =
+        getCurrentWindows ()
+        |> Seq.tryPick (function
+            | f when isToClientFloating f handle ownerImpl -> Some ToClientFloating
+            | _ -> None)
+
+    override x.WndProc(hWnd, msg, wParam, lParam) =
+
+        match msg, wParam, (x, lParam) with
+        | WM_NCACTIVATE, Deactive, ToClientFloating -> ``base``.WndProc(hWnd, msg, nativeBool true, 0)
+        | _ -> ``base``.WndProc(hWnd, msg, wParam, lParam)
+
+module FloatingWindowOwnerImpl =
+    let tryGet () =
+        if Environment.OSVersion.Platform = PlatformID.Win32NT then
+            new FloatingWindowOwnerImpl() :> IWindowImpl
+            |> Some
+        else
+            None
+
+type FloatingOwnerHost() as x =
     inherit ContentControl()
 
     let hostDisposables = CompositeDisposable.create ()
     let floatingDisposables = CompositeDisposable.create ()
 
-    let floatingWindowSub = FloatingWindow() |> Subject.behavior
+    let floatingWindowSub = FloatingWindow(Owner = Some x) |> Subject.behavior
     let isAttachedSub = Subject.behavior false
 
     let initNewSizeToContent =
@@ -207,7 +289,9 @@ type FloatingOwnerHost() =
                 floatingDisposables.Clear()
 
                 floatingWindowSub.Value.Close()
+                floatingWindowSub.Value.Owner <- None
                 value.Content <- floatingWindowSub.Value.Content
+                value.Owner <- Some x
                 floatingWindowSub.OnNext value
 
     static member FloatingWindowProperty =

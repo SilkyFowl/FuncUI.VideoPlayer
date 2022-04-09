@@ -125,10 +125,30 @@ module CompositeDisposable =
 [<AutoOpen>]
 module AvaloniaExtention =
     open Avalonia
+    open Avalonia.Controls
+    open Avalonia.Controls.ApplicationLifetimes
+    open Avalonia.Platform
 
     let inline (!) property =
         AvaloniaProperty.op_OnesComplement property
 
+    let inline getLifetime () =
+        match Application.Current.ApplicationLifetime with
+        | :? IClassicDesktopStyleApplicationLifetime as lifetime -> Some lifetime
+        | _ -> None
+
+    let inline getCurrentWindows () =
+        getLifetime ()
+        |> Option.map (fun l -> l.Windows)
+        |> Option.defaultValue List.Empty
+
+    type WindowWrapper =
+        inherit Window
+
+        new(impl) =
+            match impl with
+            | Some (impl) -> { inherit Window(impl) }
+            | None -> { inherit Window() }
 
 module WindowBase =
     open Avalonia.Controls

@@ -32,19 +32,21 @@ module Shell =
                             ]
                             TabItem.create [
                                 TabItem.header "VideoPlayer-Elmish"
-                                TabItem.content (VideoPlayerElmish.cmp())
+                                TabItem.content (VideoPlayerElmish.cmp ())
                             ]
                         ]
                     ]
                 ]
             ])
 
+
+    open LibVLCSharp.Avalonia.FuncUI
     /// This is the main window of your application
     /// you can do all sort of useful things here like setting heights and widths
     /// as well as attaching your dev tools that can be super useful when developing with
     /// Avalonia
     type MainWindow() as this =
-        inherit HostWindow()
+        inherit WindowWrapper(FloatingWindowOwnerImpl.tryGet ())
 
         do
             base.Title <- "Full App"
