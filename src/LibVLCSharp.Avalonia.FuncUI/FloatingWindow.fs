@@ -117,9 +117,9 @@ type FloatingOwnerHost() =
     let mutable getNewLeft = fun _ _ -> Double.NaN
     let mutable getNewTop = fun _ _ -> Double.NaN
 
-    member inline private x.UpdateFloatingCore (manager: VisualLayerManager) (hostBounds: Rect) =
-        manager.MaxWidth <- hostBounds.Width
-        manager.MaxHeight <- hostBounds.Height
+    member inline private x.UpdateFloatingCore(manager: VisualLayerManager) =
+        manager.MaxWidth <- x.Bounds.Width
+        manager.MaxHeight <- x.Bounds.Height
 
         floatingWindowSub.Value.SizeToContent <- newSizeToContent
         floatingWindowSub.Value.Width <- getNewWidth x
@@ -134,7 +134,7 @@ type FloatingOwnerHost() =
 
     member inline private x.UpdateFloating() =
         match floatingWindowSub.Value.VisualLayerManager with
-        | Some manager -> x.UpdateFloatingCore manager x.Bounds
+        | Some manager -> x.UpdateFloatingCore manager
         | None -> ()
 
     member inline private x.InitFloatingWindow(floatingWindow: FloatingWindow) =
@@ -163,7 +163,7 @@ type FloatingOwnerHost() =
         |> Observable.mergeIgnore (x.GetObservable FloatingOwnerHost.BoundsProperty)
         |> Observable.subscribe (fun _ ->
             match floatingWindow.VisualLayerManager with
-            | Some manager -> x.UpdateFloatingCore manager x.Bounds
+            | Some manager -> x.UpdateFloatingCore manager
             | None -> ())
         |> floatingDisposables.Add
 
