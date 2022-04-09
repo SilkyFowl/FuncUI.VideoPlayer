@@ -105,6 +105,9 @@ module Observable =
 
     let inline mergeIgnore a = (ignore >> Observable.merge) a
 
+    let inline combineLatest2 a b =
+        Observable.CombineLatest(a, b, (fun a b -> a, b))
+
     let inline combineLatest3 a b c =
         Observable.CombineLatest(a, b, c, (fun a b c -> a, b, c))
 
@@ -122,6 +125,7 @@ module CompositeDisposable =
 [<AutoOpen>]
 module AvaloniaExtention =
     open Avalonia
+
     let inline (!) property =
         AvaloniaProperty.op_OnesComplement property
 

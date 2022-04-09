@@ -26,22 +26,24 @@ type FloatingWindow() =
             ShowInTaskbar = false
         )
 
-    let mutable visualLayerManager = None
+    let visualLayerManagerSub = Subject.behavior None
 
     let getVisualRoot (visual: IVisual) = visual.VisualRoot :?> WindowBase
 
     member val Owner = Option<IVisual>.None with get, set
 
     member x.VisualLayerManager =
-        match visualLayerManager with
+        match visualLayerManagerSub.Value with
         | Some _ as vm -> vm
         | None ->
             x.GetVisualDescendants()
             |> Seq.tryPick (function
                 | :? VisualLayerManager as m ->
-                    visualLayerManager <- Some m
-                    visualLayerManager
+                    Some m |> visualLayerManagerSub.OnNext
+                    visualLayerManagerSub.Value
                 | _ -> None)
+
+    member x.VisualLayerManagerObservable: IObservable<_> = visualLayerManagerSub
 
     member x.RaizeOwnerEvent e =
         match x.Owner with
@@ -67,7 +69,6 @@ type FloatingWindow() =
 #if DEBUG
         x.AttachDevTools()
 #endif
-
 type FloatingOwnerHost() =
     inherit ContentControl()
 
@@ -77,41 +78,59 @@ type FloatingOwnerHost() =
     let floatingWindowSub = FloatingWindow() |> Subject.behavior
     let isAttachedSub = Subject.behavior false
 
+    let initNewSizeToContent =
+        function
+        | (HorizontalAlignment.Stretch, VerticalAlignment.Stretch) -> SizeToContent.Manual
+        | (HorizontalAlignment.Stretch, _) -> SizeToContent.Width
+        | (_, VerticalAlignment.Stretch) -> SizeToContent.Height
+        | (_, _) -> SizeToContent.Manual
+
+    let initGetNewWidth (horizontalAlignment: HorizontalAlignment) =
+        if horizontalAlignment = HorizontalAlignment.Stretch then
+            fun (host: FloatingOwnerHost) -> host.Bounds.Width
+        else
+            fun _ -> Double.NaN
+
+    let initGetNewHeight (verticalAlignment: VerticalAlignment) =
+        if verticalAlignment = VerticalAlignment.Stretch then
+            fun (host: FloatingOwnerHost) -> host.Bounds.Height
+        else
+            fun _ -> Double.NaN
+
+    let initGetLeft =
+        function
+        | HorizontalAlignment.Right ->
+            fun (host: FloatingOwnerHost) (manager: VisualLayerManager) -> host.Bounds.Width - manager.Bounds.Width
+        | HorizontalAlignment.Center -> fun host manager -> (host.Bounds.Width - manager.Bounds.Width) / 2.0
+        | _ -> fun _ _ -> 0.0
+
+    let initGetTop =
+        function
+        | VerticalAlignment.Bottom ->
+            fun (host: FloatingOwnerHost) (manager: VisualLayerManager) -> host.Bounds.Height - manager.Bounds.Height
+        | VerticalAlignment.Center -> fun host manager -> (host.Bounds.Height - manager.Bounds.Height) / 2.0
+        | _ -> fun _ _ -> 0.0
+
+    let mutable newSizeToContent = SizeToContent.Manual
+    let mutable getNewWidth = fun _ -> Double.NaN
+    let mutable getNewHeight = fun _ -> Double.NaN
+    let mutable getNewLeft = fun _ _ -> Double.NaN
+    let mutable getNewTop = fun _ _ -> Double.NaN
 
     member inline private x.UpdateFloatingCore (manager: VisualLayerManager) (hostBounds: Rect) =
-        let getLeft () =
-            match manager.HorizontalAlignment with
-            | HorizontalAlignment.Right -> hostBounds.Width - manager.Bounds.Width
-            | HorizontalAlignment.Center -> (hostBounds.Width - manager.Bounds.Width) / 2.0
-            | _ -> 0.0
-
-        let getTop () =
-            match manager.VerticalAlignment with
-            | VerticalAlignment.Bottom -> hostBounds.Height - manager.Bounds.Height
-            | VerticalAlignment.Center -> (hostBounds.Height - manager.Bounds.Height) / 2.0
-            | _ -> 0.0
-
-        let newSizeToContent, newWidth, newHeight, newPoint =
-            match manager.HorizontalAlignment, manager.VerticalAlignment with
-            | (HorizontalAlignment.Stretch, VerticalAlignment.Stretch) ->
-                SizeToContent.Manual, hostBounds.Width, hostBounds.Height, Point(0.0, 0.0)
-            | (HorizontalAlignment.Stretch, _) ->
-                SizeToContent.Width, hostBounds.Width, Double.NaN, Point(0.0, getLeft ())
-            | (_, VerticalAlignment.Stretch) ->
-                SizeToContent.Height, Double.NaN, hostBounds.Height, Point(getTop (), 0.0)
-            | (_, _) -> SizeToContent.Manual, Double.NaN, Double.NaN, Point(getTop (), getLeft ())
-
         manager.MaxWidth <- hostBounds.Width
         manager.MaxHeight <- hostBounds.Height
 
         floatingWindowSub.Value.SizeToContent <- newSizeToContent
-        floatingWindowSub.Value.Width <- newWidth
-        floatingWindowSub.Value.Height <- newHeight
+        floatingWindowSub.Value.Width <- getNewWidth x
+        floatingWindowSub.Value.Height <- getNewHeight x
 
-        match x.PointToScreen newPoint with
-        | newPosition when newPosition <> floatingWindowSub.Value.Position ->
+        let newPosition =
+            Point(getNewTop x manager, getNewLeft x manager)
+            |> x.PointToScreen
+
+        if newPosition <> floatingWindowSub.Value.Position then
             floatingWindowSub.Value.Position <- newPosition
-        | _ -> ()
 
     member inline private x.UpdateFloating() =
         match floatingWindowSub.Value.VisualLayerManager with
@@ -120,6 +139,21 @@ type FloatingOwnerHost() =
 
     member inline private x.InitFloatingWindow(floatingWindow: FloatingWindow) =
         floatingWindow[!FloatingWindow.ContentProperty] <- x[!FloatingOwnerHost.ContentProperty]
+
+        floatingWindow.VisualLayerManagerObservable
+        |> Observable.subscribe (function
+            | Some vm ->
+                vm.GetObservable VisualLayerManager.HorizontalAlignmentProperty
+                |> Observable.combineLatest2 (vm.GetObservable VisualLayerManager.VerticalAlignmentProperty)
+                |> Observable.subscribe (fun (v, h) ->
+                    newSizeToContent <- initNewSizeToContent (h, v)
+                    getNewWidth <- initGetNewWidth h
+                    getNewHeight <- initGetNewHeight v
+                    getNewLeft <- initGetLeft h
+                    getNewTop <- initGetTop v)
+                |> floatingDisposables.Add
+            | _ -> ())
+        |> floatingDisposables.Add
 
         let root = x.GetVisualRoot() :?> WindowBase
 
