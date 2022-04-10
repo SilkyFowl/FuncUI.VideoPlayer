@@ -179,9 +179,6 @@ module VideoPlayerComponent =
                             ]
                         ]
 
-
-
-
                         VideoView.create [
                             VideoView.isVideoVisible mp.Current.IsPlaying
 
@@ -240,7 +237,7 @@ module VideoPlayerElmish =
               playerState = HasNotStartedYet
               path = "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4" }
 
-    let cmp () =
+    let view =
         Component.create (
             "player-elmish",
             (fun ctx ->
@@ -252,15 +249,14 @@ module VideoPlayerElmish =
 
                 ctx.useEffect (
                     (fun _ ->
-                        player.Playing
-                        |> Observable.subscribe (fun _ -> videoViewVisible.Set true)),
-                    [ EffectTrigger.AfterInit ]
-                )
+                        CompositeDisposable.ofSeq [
+                            player.Playing
+                            |> Observable.subscribe (fun _ -> videoViewVisible.Set true)
 
-                ctx.useEffect (
-                    (fun _ ->
-                        player.Stopped
-                        |> Observable.subscribe (fun _ -> videoViewVisible.Set false)),
+                            player.Stopped
+                            |> Observable.subscribe (fun _ -> videoViewVisible.Set false)
+                        ]
+                        :> IDisposable),
                     [ EffectTrigger.AfterInit ]
                 )
 

@@ -31,8 +31,8 @@ module Shell =
                                 TabItem.content VideoPlayerComponent.view
                             ]
                             TabItem.create [
-                                TabItem.header "VideoPlayer-Elmish"
-                                TabItem.content (VideoPlayerElmish.cmp ())
+                                TabItem.header "VideoPlayer-UseElmish"
+                                TabItem.content (VideoPlayerElmish.view)
                             ]
                         ]
                     ]

@@ -121,6 +121,8 @@ module CompositeDisposable =
 
     let create () = new CompositeDisposable()
 
+    let ofSeq (disposables: _ seq) = new CompositeDisposable(disposables)
+
 
 [<AutoOpen>]
 module AvaloniaExtention =
