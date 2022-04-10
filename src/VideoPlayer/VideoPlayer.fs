@@ -56,14 +56,14 @@ module Media =
 
 module LibVLCSharpComponent =
 
-    let seekBar id (player: IReadable<MediaPlayer>) writablePosition onPositionChanged attrs =
+    let seekBar id (player: MediaPlayer) writablePosition onPositionChanged attrs =
         Component.create (
             id,
             fun ctx ->
                 let minValue = 0.0
                 let maxValue = 1.0
 
-                let player = ctx.usePassedRead player
+                let player = ctx.useState player
                 let player = player.Current
                 let outlet = ctx.useState (Unchecked.defaultof<Slider>, false)
                 let isPressed = ctx.useState (false, false)
@@ -188,7 +188,7 @@ module VideoPlayerComponent =
                                     DockPanel.children [
                                         LibVLCSharpComponent.seekBar
                                             "player"
-                                            mp
+                                            mp.Current
                                             position
                                             ignore
                                             [ Slider.verticalAlignment VerticalAlignment.Bottom
