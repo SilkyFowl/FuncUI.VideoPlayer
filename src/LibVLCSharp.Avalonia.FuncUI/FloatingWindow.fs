@@ -22,17 +22,24 @@ open NativeModule
 type FloatingWindowImpl() =
     inherit WindowImpl()
 
-    static let ownerList = MailboxProcessor.createAgent Map.empty
+    static let ownerList = MailboxProcessor.createAgent Map.empty<nativeint, IVisual>
 
     let tryGetOwner (x: FloatingWindowImpl) =
         Map.tryFind x.Handle.Handle
         |> MailboxProcessor.postAndReply ownerList
 
     let (|OwnerHandle|_|) (x: FloatingWindowImpl) =
-        tryGetOwner x |> Option.map WindowBase.getHandle
+        match tryGetOwner x with
+        | Some v ->
+            v.GetVisualRoot() :?> WindowBase |> WindowBase.getHandle |> Some
+        | _ -> None
 
-    static member Register (floatingWindow: WindowBase) owner =
+    static member Register (floatingWindow: WindowBase) (owner: IVisual) =
         Map.add floatingWindow.PlatformImpl.Handle.Handle owner
+        |> MailboxProcessor.post ownerList
+
+    static member UnRegister(floatingWindow: WindowBase) =
+        Map.remove floatingWindow.PlatformImpl.Handle.Handle
         |> MailboxProcessor.post ownerList
 
     override x.WndProc(hWnd, msg, wParam, lParam) =
@@ -74,7 +81,16 @@ type FloatingWindow() =
 
     let getVisualRoot (visual: IVisual) = visual.VisualRoot :?> WindowBase
 
-    member val Owner = Option<IVisual>.None with get, set
+    let mutable owner = Option<IVisual>.None
+
+    member x.Owner
+        with get (): Option<IVisual> = owner
+        and set (value: Option<IVisual>) =
+            if Environment.OSVersion.Platform = PlatformID.Win32NT then
+                FloatingWindowImpl.UnRegister x
+                Option.iter (FloatingWindowImpl.Register x) value
+
+            owner <- value
 
     member x.VisualLayerManager =
         match visualLayerManagerSub.Value with
@@ -193,7 +209,7 @@ type FloatingOwnerHost() as x =
         | VerticalAlignment.Center -> fun host manager -> (host.Bounds.Height - manager.Bounds.Height) / 2.0
         | _ -> fun _ _ -> 0.0
 
-    let mutable updateFloatingCore = fun _ -> ()
+    let mutable updateFloatingCore = ignore
 
     let initUpdateFloatingCore (verticalAlignment, horizontalAlignment) =
         let newSizeToContent = initNewSizeToContent (horizontalAlignment, verticalAlignment)
