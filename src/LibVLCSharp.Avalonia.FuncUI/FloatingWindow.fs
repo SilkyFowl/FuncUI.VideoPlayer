@@ -24,14 +24,14 @@ type FloatingWindowImpl() =
 
     static let ownerList = MailboxProcessor.createAgent Map.empty<nativeint, IVisual>
 
-    let tryGetOwner (x: FloatingWindowImpl) =
+    let tryGetOwnerRoot (x: FloatingWindowImpl) =
         Map.tryFind x.Handle.Handle
         |> MailboxProcessor.postAndReply ownerList
+        |> Option.map (fun v ->v.GetVisualRoot())
 
     let (|OwnerHandle|_|) (x: FloatingWindowImpl) =
-        match tryGetOwner x with
-        | Some v ->
-            v.GetVisualRoot() :?> WindowBase |> WindowBase.getHandle |> Some
+        match tryGetOwnerRoot x with
+        | Some (:? WindowBase as w) -> WindowBase.getHandle w |> Some
         | _ -> None
 
     static member Register (floatingWindow: WindowBase) (owner: IVisual) =
