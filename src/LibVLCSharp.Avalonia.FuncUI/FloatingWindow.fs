@@ -193,30 +193,34 @@ type FloatingOwnerHost() as x =
         | VerticalAlignment.Center -> fun host manager -> (host.Bounds.Height - manager.Bounds.Height) / 2.0
         | _ -> fun _ _ -> 0.0
 
-    let mutable newSizeToContent = SizeToContent.Manual
-    let mutable getNewWidth = fun _ -> Double.NaN
-    let mutable getNewHeight = fun _ -> Double.NaN
-    let mutable getNewLeft = fun _ _ -> Double.NaN
-    let mutable getNewTop = fun _ _ -> Double.NaN
+    let mutable updateFloatingCore = fun _ -> ()
 
-    member inline private x.UpdateFloatingCore(manager: VisualLayerManager) =
-        manager.MaxWidth <- x.Bounds.Width
-        manager.MaxHeight <- x.Bounds.Height
+    let initUpdateFloatingCore (verticalAlignment, horizontalAlignment) =
+        let newSizeToContent = initNewSizeToContent (horizontalAlignment, verticalAlignment)
+        let getNewWidth = initGetNewWidth horizontalAlignment
+        let getNewHeight = initGetNewHeight verticalAlignment
+        let getNewLeft = initGetLeft horizontalAlignment
+        let getNewTop = initGetTop verticalAlignment
 
-        floatingWindowSub.Value.SizeToContent <- newSizeToContent
-        floatingWindowSub.Value.Width <- getNewWidth x
-        floatingWindowSub.Value.Height <- getNewHeight x
+        updateFloatingCore <-
+            fun (manager: VisualLayerManager) ->
+                manager.MaxWidth <- x.Bounds.Width
+                manager.MaxHeight <- x.Bounds.Height
 
-        let newPosition =
-            Point(getNewTop x manager, getNewLeft x manager)
-            |> x.PointToScreen
+                floatingWindowSub.Value.SizeToContent <- newSizeToContent
+                floatingWindowSub.Value.Width <- getNewWidth x
+                floatingWindowSub.Value.Height <- getNewHeight x
 
-        if newPosition <> floatingWindowSub.Value.Position then
-            floatingWindowSub.Value.Position <- newPosition
+                let newPosition =
+                    Point(getNewTop x manager, getNewLeft x manager)
+                    |> x.PointToScreen
+
+                if newPosition <> floatingWindowSub.Value.Position then
+                    floatingWindowSub.Value.Position <- newPosition
 
     member inline private x.UpdateFloating() =
         match floatingWindowSub.Value.VisualLayerManager with
-        | Some manager -> x.UpdateFloatingCore manager
+        | Some manager -> updateFloatingCore manager
         | None -> ()
 
     member inline private x.InitFloatingWindow(floatingWindow: FloatingWindow) =
@@ -227,12 +231,7 @@ type FloatingOwnerHost() as x =
             | Some vm ->
                 vm.GetObservable VisualLayerManager.HorizontalAlignmentProperty
                 |> Observable.combineLatest2 (vm.GetObservable VisualLayerManager.VerticalAlignmentProperty)
-                |> Observable.subscribe (fun (v, h) ->
-                    newSizeToContent <- initNewSizeToContent (h, v)
-                    getNewWidth <- initGetNewWidth h
-                    getNewHeight <- initGetNewHeight v
-                    getNewLeft <- initGetLeft h
-                    getNewTop <- initGetTop v)
+                |> Observable.subscribe initUpdateFloatingCore
                 |> floatingDisposables.Add
             | _ -> ())
         |> floatingDisposables.Add
@@ -245,7 +244,7 @@ type FloatingOwnerHost() as x =
         |> Observable.mergeIgnore (x.GetObservable FloatingOwnerHost.BoundsProperty)
         |> Observable.subscribe (fun _ ->
             match floatingWindow.VisualLayerManager with
-            | Some manager -> x.UpdateFloatingCore manager
+            | Some manager -> updateFloatingCore manager
             | None -> ())
         |> floatingDisposables.Add
 
