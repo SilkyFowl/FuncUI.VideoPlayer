@@ -46,7 +46,7 @@ module Shell =
     /// as well as attaching your dev tools that can be super useful when developing with
     /// Avalonia
     type MainWindow() as this =
-        inherit WindowWrapper(FloatingWindowOwnerImpl.tryGet ())
+        inherit WindowWrapper(FloatingWindowHostRootImpl.tryGet ())
 
         do
             base.Title <- "Full App"

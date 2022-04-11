@@ -38,7 +38,7 @@ module MediaPlayer =
         | _ -> ()
 
 type VideoView() =
-    inherit FloatingOwnerHost()
+    inherit FloatingWindowHost()
 
     let mutable mediaPlayer = Option<MediaPlayer>.None
     let mutable platformHandle = Option<IPlatformHandle>.None

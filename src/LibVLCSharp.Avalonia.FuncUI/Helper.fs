@@ -144,6 +144,7 @@ module AvaloniaExtention =
         |> Option.map (fun l -> l.Windows)
         |> Option.defaultValue List.Empty
 
+    /// IWindowImplのオーバーロードを簡単にするためのラッパークラス。
     type WindowWrapper =
         inherit Window
 
