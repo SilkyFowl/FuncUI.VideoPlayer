@@ -54,17 +54,15 @@ module Media =
                 | other -> return Error $"Parse {other}"
         }
 
-module LibVLCSharpComponent =
+module SeekBar =
 
-    let seekBar id (player: MediaPlayer) writablePosition onPositionChanged attrs =
+    let create id (player: MediaPlayer) writablePosition onPositionChanged attrs =
         Component.create (
             id,
             fun ctx ->
                 let minValue = 0.0
                 let maxValue = 1.0
 
-                let player = ctx.useState player
-                let player = player.Current
                 let outlet = ctx.useState (Unchecked.defaultof<Slider>, false)
                 let isPressed = ctx.useState (false, false)
                 let position = ctx.usePassed writablePosition
@@ -93,12 +91,12 @@ module LibVLCSharpComponent =
                     [ EffectTrigger.AfterInit ]
                 )
 
+                ctx.attrs attrs
+
                 View.createWithOutlet
                     outlet.Set
                     Slider.create
-                    [ yield! attrs
-
-                      Slider.minimum minValue
+                    [ Slider.minimum minValue
                       Slider.maximum maxValue
 
                       if player.IsSeekable then
@@ -120,7 +118,22 @@ module LibVLCSharpComponent =
 
 
 module VideoPlayerComponent =
+    open Avalonia.Media
+
     let player = lazy (new State<_>(MediaPlayer.create ()))
+
+    let opacityMask: IBrush =
+        LinearGradientBrush(
+            StartPoint = RelativePoint(Point(0.0, 1.0), RelativeUnit.Relative),
+            EndPoint = RelativePoint(Point(0.0, 0.0), RelativeUnit.Relative),
+            GradientStops =
+                (GradientStops()
+                 |> tap (fun s ->
+                     [ GradientStop(Color.Parse "Black", 0.0)
+                       GradientStop(Color.Parse "Gray", 0.8)
+                       GradientStop(Color.Parse "Transparent", 1.0) ]
+                     |> s.AddRange))
+        )
 
     let view =
         Component.create (
@@ -129,75 +142,92 @@ module VideoPlayerComponent =
 
                 let mp = ctx.usePassedRead player.Value
 
-                let position = ctx.useState 0.0
-
                 let path =
                     ctx.useState (
                         "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
                         false
                     )
 
+                let videoViewVisible = ctx.useState false
+                let position = ctx.useState (0.0, false)
+
+                ctx.useEffect (
+                    (fun _ ->
+                        CompositeDisposable.ofSeq [
+                            mp.Current.Playing
+                            |> Observable.subscribe (fun _ -> videoViewVisible.Set true)
+
+                            mp.Current.Stopped
+                            |> Observable.subscribe (fun _ -> videoViewVisible.Set false)
+                        ]
+                        :> IDisposable),
+                    [ EffectTrigger.AfterInit ]
+                )
+
                 let errors = ctx.useState ""
 
-                DockPanel.create [
-                    DockPanel.verticalAlignment VerticalAlignment.Stretch
-                    DockPanel.horizontalAlignment HorizontalAlignment.Stretch
-                    DockPanel.children [
+                VideoView.create [
+                    VideoView.isVideoVisible videoViewVisible.Current
+
+                    VideoView.mediaPlayer (Some mp.Current)
+                    VideoView.content (
                         Grid.create [
-                            Grid.dock Dock.Bottom
-                            Grid.columnDefinitions "Auto,*"
-                            Grid.rowDefinitions "Auto,32"
+                            Grid.classes [ "videoview-content" ]
+                            Grid.rowDefinitions "*,Auto,Auto"
                             Grid.children [
-                                Button.create [
-                                    Button.width 64
-                                    Button.column 0
-                                    Button.row 0
-                                    Button.horizontalAlignment HorizontalAlignment.Center
-                                    Button.horizontalContentAlignment HorizontalAlignment.Center
-                                    Button.content "Play"
-                                    Button.onClick (fun _ ->
-                                        task {
-                                            match! Media.ofPath path.Current with
-                                            | Ok media ->
-                                                errors.Set ""
-                                                mp.Current.Play media |> ignore
-                                            | Error ex -> errors.Set ex
-                                        }
-                                        |> ignore)
-                                    Button.dock Dock.Bottom
+                                Canvas.create [
+                                    Canvas.row 1
+                                    Canvas.rowSpan 2
+                                    Canvas.column 0
+                                    Canvas.columnSpan 3
+                                    Canvas.background Brushes.Black
+                                    Canvas.opacity 0.5
+                                    Canvas.opacityMask opacityMask
                                 ]
-                                TextBox.create [
-                                    TextBox.row 0
-                                    TextBox.rowSpan 2
-                                    TextBox.column 1
-                                    TextBox.verticalAlignment VerticalAlignment.Top
-                                    TextBox.text path.Current
-                                    if not <| String.IsNullOrEmpty errors.Current then
-                                        TextBox.errors [ errors.Current ]
-                                    TextBox.onTextChanged path.Set
+                                SeekBar.create
+                                    "videoplayer-seekbar"
+                                    mp.Current
+                                    position
+                                    ignore
+                                    [ Component.row 1 ]
+                                Grid.create [
+                                    Grid.row 2
+                                    Grid.columnDefinitions "Auto,*"
+                                    Grid.rowDefinitions "Auto,32"
+                                    Grid.children [
+                                        Button.create [
+                                            Button.width 64
+                                            Button.column 0
+                                            Button.row 0
+                                            Button.horizontalAlignment HorizontalAlignment.Center
+                                            Button.horizontalContentAlignment HorizontalAlignment.Center
+                                            Button.content "Play"
+                                            Button.onClick (fun _ ->
+                                                task {
+                                                    match! Media.ofPath path.Current with
+                                                    | Ok media ->
+                                                        errors.Set ""
+                                                        mp.Current.Play media |> ignore
+                                                    | Error ex -> errors.Set ex
+                                                }
+                                                |> ignore)
+                                            Button.dock Dock.Bottom
+                                        ]
+                                        TextBox.create [
+                                            TextBox.row 0
+                                            TextBox.rowSpan 2
+                                            TextBox.column 1
+                                            TextBox.verticalAlignment VerticalAlignment.Top
+                                            TextBox.text path.Current
+                                            if not <| String.IsNullOrEmpty errors.Current then
+                                                TextBox.errors [ errors.Current ]
+                                            TextBox.onTextChanged path.Set
+                                        ]
+                                    ]
                                 ]
                             ]
                         ]
-
-                        VideoView.create [
-                            VideoView.isVideoVisible mp.Current.IsPlaying
-
-                            VideoView.mediaPlayer (Some mp.Current)
-                            VideoView.content (
-                                DockPanel.create [
-                                    DockPanel.children [
-                                        LibVLCSharpComponent.seekBar
-                                            "player"
-                                            mp.Current
-                                            position
-                                            ignore
-                                            [ Slider.verticalAlignment VerticalAlignment.Bottom
-                                              Slider.dock Dock.Bottom ]
-                                    ]
-                                ]
-                            )
-                        ]
-                    ]
+                    )
                 ]
         )
 
@@ -260,43 +290,44 @@ module VideoPlayerElmish =
                     [ EffectTrigger.AfterInit ]
                 )
 
-                DockPanel.create [
-                    DockPanel.verticalAlignment VerticalAlignment.Stretch
-                    DockPanel.horizontalAlignment HorizontalAlignment.Stretch
-                    DockPanel.children [
+                VideoView.create [
+                    VideoView.isVideoVisible videoViewVisible.Current
+                    VideoView.mediaPlayer (Some player)
+                    VideoView.content (
                         Grid.create [
-                            Grid.dock Dock.Bottom
-                            Grid.columnDefinitions "Auto,*"
-                            Grid.rowDefinitions "Auto,32"
+                            Grid.classes [ "videoview-content" ]
+                            Grid.rowDefinitions "*,Auto"
                             Grid.children [
-                                Button.create [
-                                    Button.width 64
-                                    Button.column 0
-                                    Button.row 0
-                                    Button.horizontalAlignment HorizontalAlignment.Center
-                                    Button.horizontalContentAlignment HorizontalAlignment.Center
-                                    Button.content "Play"
-                                    Button.onClick (fun _ -> Started() |> Play |> dispatch)
-                                    Button.dock Dock.Bottom
-                                ]
-                                TextBox.create [
-                                    TextBox.row 0
-                                    TextBox.rowSpan 2
-                                    TextBox.column 1
-                                    TextBox.verticalAlignment VerticalAlignment.Top
-                                    TextBox.text state.Current.path
-                                    match state.Current.playerState with
-                                    | Resolved (Error error) -> TextBox.errors [ error ]
-                                    | _ -> ()
-                                    TextBox.onTextChanged (SetPath >> dispatch)
+                                Grid.create [
+                                    Grid.row 1
+                                    Grid.columnDefinitions "Auto,*"
+                                    Grid.rowDefinitions "Auto,32"
+                                    Grid.children [
+                                        Button.create [
+                                            Button.width 64
+                                            Button.column 0
+                                            Button.row 0
+                                            Button.horizontalAlignment HorizontalAlignment.Center
+                                            Button.horizontalContentAlignment HorizontalAlignment.Center
+                                            Button.content "Play"
+                                            Button.onClick (fun _ -> Started() |> Play |> dispatch)
+                                            Button.dock Dock.Bottom
+                                        ]
+                                        TextBox.create [
+                                            TextBox.row 0
+                                            TextBox.rowSpan 2
+                                            TextBox.column 1
+                                            TextBox.verticalAlignment VerticalAlignment.Top
+                                            TextBox.text state.Current.path
+                                            match state.Current.playerState with
+                                            | Resolved (Error error) -> TextBox.errors [ error ]
+                                            | _ -> ()
+                                            TextBox.onTextChanged (SetPath >> dispatch)
+                                        ]
+                                    ]
                                 ]
                             ]
                         ]
-
-                        VideoView.create [
-                            VideoView.isVideoVisible videoViewVisible.Current
-                            VideoView.mediaPlayer (Some player)
-                        ]
-                    ]
+                    )
                 ])
         )
