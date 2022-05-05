@@ -174,6 +174,67 @@ module FloatingWindowHostRootImpl =
         else
             None
 
+module private FloatingHelper =
+    open System.Reactive.Subjects
+    type UpdateFloatingFunc = int
+
+    let inline initNewSizeToContent (verticalAlignment: VerticalAlignment, horizontalAlignment: HorizontalAlignment) =
+        match horizontalAlignment, verticalAlignment with
+        | (HorizontalAlignment.Stretch, VerticalAlignment.Stretch) -> SizeToContent.Manual
+        | (HorizontalAlignment.Stretch, _) -> SizeToContent.Width
+        | (_, VerticalAlignment.Stretch) -> SizeToContent.Height
+        | (_, _) -> SizeToContent.Manual
+
+    let inline initGetNewWidth (horizontalAlignment: HorizontalAlignment) =
+        if horizontalAlignment = HorizontalAlignment.Stretch then
+            fun (host: ContentControl) -> host.Bounds.Width
+        else
+            fun _ -> Double.NaN
+
+    let inline initGetNewHeight (verticalAlignment: VerticalAlignment) =
+        if verticalAlignment = VerticalAlignment.Stretch then
+            fun (host: ContentControl) -> host.Bounds.Height
+        else
+            fun _ -> Double.NaN
+
+    let initGetLeft =
+        function
+        | HorizontalAlignment.Right ->
+            fun (host: ContentControl) (manager: VisualLayerManager) -> host.Bounds.Width - manager.Bounds.Width
+        | HorizontalAlignment.Center -> fun host manager -> (host.Bounds.Width - manager.Bounds.Width) / 2.0
+        | _ -> fun _ _ -> 0.0
+
+    let initGetTop =
+        function
+        | VerticalAlignment.Bottom ->
+            fun (host: ContentControl) (manager: VisualLayerManager) -> host.Bounds.Height - manager.Bounds.Height
+        | VerticalAlignment.Center -> fun host manager -> (host.Bounds.Height - manager.Bounds.Height) / 2.0
+        | _ -> fun _ _ -> 0.0
+
+    let inline initUpdateFloating
+        (newSizeToContent: SizeToContent)
+        ([<InlineIfLambda>] getNewWidth: ContentControl -> float)
+        ([<InlineIfLambda>] getNewHeight: ContentControl -> float)
+        ([<InlineIfLambda>] getNewLeft: ContentControl -> VisualLayerManager -> float)
+        ([<InlineIfLambda>] getNewTop: ContentControl -> VisualLayerManager -> float)
+        (floatingWindowSub: BehaviorSubject<FloatingWindow>)
+        (host: ContentControl)
+        =
+        fun (manager: VisualLayerManager) ->
+            manager.MaxWidth <- host.Bounds.Width
+            manager.MaxHeight <- host.Bounds.Height
+
+            floatingWindowSub.Value.SizeToContent <- newSizeToContent
+            floatingWindowSub.Value.Width <- getNewWidth host
+            floatingWindowSub.Value.Height <- getNewHeight host
+
+            let newPosition =
+                Point(getNewTop host manager, getNewLeft host manager)
+                |> host.PointToScreen
+
+            if newPosition <> floatingWindowSub.Value.Position then
+                floatingWindowSub.Value.Position <- newPosition
+
 type FloatingWindowHost() as x =
     inherit ContentControl()
 
@@ -186,65 +247,20 @@ type FloatingWindowHost() as x =
 
     let isAttachedSub = Subject.behavior false
 
-    let initNewSizeToContent =
-        function
-        | (HorizontalAlignment.Stretch, VerticalAlignment.Stretch) -> SizeToContent.Manual
-        | (HorizontalAlignment.Stretch, _) -> SizeToContent.Width
-        | (_, VerticalAlignment.Stretch) -> SizeToContent.Height
-        | (_, _) -> SizeToContent.Manual
-
-    let initGetNewWidth (horizontalAlignment: HorizontalAlignment) =
-        if horizontalAlignment = HorizontalAlignment.Stretch then
-            fun (host: FloatingWindowHost) -> host.Bounds.Width
-        else
-            fun _ -> Double.NaN
-
-    let initGetNewHeight (verticalAlignment: VerticalAlignment) =
-        if verticalAlignment = VerticalAlignment.Stretch then
-            fun (host: FloatingWindowHost) -> host.Bounds.Height
-        else
-            fun _ -> Double.NaN
-
-    let initGetLeft =
-        function
-        | HorizontalAlignment.Right ->
-            fun (host: FloatingWindowHost) (manager: VisualLayerManager) -> host.Bounds.Width - manager.Bounds.Width
-        | HorizontalAlignment.Center -> fun host manager -> (host.Bounds.Width - manager.Bounds.Width) / 2.0
-        | _ -> fun _ _ -> 0.0
-
-    let initGetTop =
-        function
-        | VerticalAlignment.Bottom ->
-            fun (host: FloatingWindowHost) (manager: VisualLayerManager) -> host.Bounds.Height - manager.Bounds.Height
-        | VerticalAlignment.Center -> fun host manager -> (host.Bounds.Height - manager.Bounds.Height) / 2.0
-        | _ -> fun _ _ -> 0.0
-
     /// FloatingWindowのサイズと場所を更新する関数値。
     let mutable updateFloatingCore = ignore
 
     /// HorizontalAlignment, VerticalAlignmentでupdateFloatingCoreを更新する。
-    let initUpdateFloatingCore (verticalAlignment, horizontalAlignment) =
-        let newSizeToContent = initNewSizeToContent (horizontalAlignment, verticalAlignment)
-        let getNewWidth = initGetNewWidth horizontalAlignment
-        let getNewHeight = initGetNewHeight verticalAlignment
-        let getNewLeft = initGetLeft horizontalAlignment
-        let getNewTop = initGetTop verticalAlignment
-
+    let initUpdateFloatingCore (verticalAlignment: VerticalAlignment, horizontalAlignment: HorizontalAlignment) =
         updateFloatingCore <-
-            fun (manager: VisualLayerManager) ->
-                manager.MaxWidth <- x.Bounds.Width
-                manager.MaxHeight <- x.Bounds.Height
-
-                floatingWindowSub.Value.SizeToContent <- newSizeToContent
-                floatingWindowSub.Value.Width <- getNewWidth x
-                floatingWindowSub.Value.Height <- getNewHeight x
-
-                let newPosition =
-                    Point(getNewTop x manager, getNewLeft x manager)
-                    |> x.PointToScreen
-
-                if newPosition <> floatingWindowSub.Value.Position then
-                    floatingWindowSub.Value.Position <- newPosition
+            FloatingHelper.initUpdateFloating
+                (FloatingHelper.initNewSizeToContent (verticalAlignment, horizontalAlignment))
+                (FloatingHelper.initGetNewWidth horizontalAlignment)
+                (FloatingHelper.initGetNewHeight verticalAlignment)
+                (FloatingHelper.initGetLeft horizontalAlignment)
+                (FloatingHelper.initGetTop verticalAlignment)
+                floatingWindowSub
+                x
 
     member inline private x.UpdateFloating() =
         match floatingWindowSub.Value.VisualLayerManager with
@@ -292,16 +308,7 @@ type FloatingWindowHost() as x =
                 ()
             elif isVisible && isAttached then
                 x.InitFloatingWindow floatingWindowSub.Value
-
-                task {
-                    // 最初のfloatingWindowサイズ、位置の更新
-                    do! Task.delayMilliseconds 1
-                    x.UpdateFloating()
-                }
-                |> ignore
-
                 x.GetVisualRoot() :?> Window |> floating.Show
-
             else
                 floatingDisposables.Clear()
                 floating.Hide())

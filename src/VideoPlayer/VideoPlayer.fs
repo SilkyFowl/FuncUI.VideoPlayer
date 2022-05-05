@@ -294,37 +294,26 @@ module VideoPlayerElmish =
                     VideoView.isVideoVisible videoViewVisible.Current
                     VideoView.mediaPlayer (Some player)
                     VideoView.content (
-                        Grid.create [
-                            Grid.classes [ "videoview-content" ]
-                            Grid.rowDefinitions "*,Auto"
-                            Grid.children [
-                                Grid.create [
-                                    Grid.row 1
-                                    Grid.columnDefinitions "Auto,*"
-                                    Grid.rowDefinitions "Auto,32"
-                                    Grid.children [
-                                        Button.create [
-                                            Button.width 64
-                                            Button.column 0
-                                            Button.row 0
-                                            Button.horizontalAlignment HorizontalAlignment.Center
-                                            Button.horizontalContentAlignment HorizontalAlignment.Center
-                                            Button.content "Play"
-                                            Button.onClick (fun _ -> Started() |> Play |> dispatch)
-                                            Button.dock Dock.Bottom
-                                        ]
-                                        TextBox.create [
-                                            TextBox.row 0
-                                            TextBox.rowSpan 2
-                                            TextBox.column 1
-                                            TextBox.verticalAlignment VerticalAlignment.Top
-                                            TextBox.text state.Current.path
-                                            match state.Current.playerState with
-                                            | Resolved (Error error) -> TextBox.errors [ error ]
-                                            | _ -> ()
-                                            TextBox.onTextChanged (SetPath >> dispatch)
-                                        ]
-                                    ]
+                        DockPanel.create [
+                            DockPanel.row 1
+                            DockPanel.verticalAlignment VerticalAlignment.Bottom
+                            DockPanel.margin (0,0,0,8)
+                            DockPanel.children [
+                                Button.create [
+                                    Button.width 64
+                                    Button.horizontalAlignment HorizontalAlignment.Center
+                                    Button.horizontalContentAlignment HorizontalAlignment.Center
+                                    Button.content "Play"
+                                    Button.onClick (fun _ -> Started() |> Play |> dispatch)
+                                    Button.dock Dock.Left
+                                ]
+                                TextBox.create [
+                                    TextBox.verticalAlignment VerticalAlignment.Stretch
+                                    TextBox.text state.Current.path
+                                    match state.Current.playerState with
+                                    | Resolved (Error error) -> TextBox.errors [ error ]
+                                    | _ -> ()
+                                    TextBox.onTextChanged (SetPath >> dispatch)
                                 ]
                             ]
                         ]

@@ -32,6 +32,22 @@ type AsyncOperationStatus<'args, 't> =
     | Finished of 't
 
 [<AutoOpen>]
+module InputElement  =
+    open Avalonia
+    open Avalonia.Controls
+    open Avalonia.Input
+    open Avalonia.Input.TextInput
+    open Avalonia.Interactivity
+    open Avalonia.Media
+    open Avalonia.Media.Immutable
+    open Avalonia.FuncUI.Builder
+    open Avalonia.FuncUI.Types
+
+    type InputElement with
+        static member onTextInputMethodClientRequested<'t when 't :> InputElement>(func: TextInputMethodClientRequestedEventArgs -> unit, ?subPatchOptions) =
+            AttrBuilder<'t>.CreateSubscription<TextInputMethodClientRequestedEventArgs>(InputElement.TextInputMethodClientRequestedEvent, func, ?subPatchOptions = subPatchOptions)
+
+[<AutoOpen>]
 module ComponentExtension =
 
     type IComponentContext with

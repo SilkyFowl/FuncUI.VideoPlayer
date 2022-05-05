@@ -19,20 +19,16 @@ module Shell =
                         TabControl.tabStripPlacement Dock.Top
                         TabControl.viewItems [
                             TabItem.create [
-                                TabItem.header "Counter Sample"
-                                TabItem.content Counter.view
-                            ]
-                            TabItem.create [
-                                TabItem.header "About"
-                                TabItem.content About.view
+                                TabItem.header "VideoPlayer-UseElmish"
+                                TabItem.content (VideoPlayerElmish.view)
                             ]
                             TabItem.create [
                                 TabItem.header "VideoPlayer-Component"
                                 TabItem.content VideoPlayerComponent.view
                             ]
                             TabItem.create [
-                                TabItem.header "VideoPlayer-UseElmish"
-                                TabItem.content (VideoPlayerElmish.view)
+                                TabItem.header "About"
+                                TabItem.content About.view
                             ]
                         ]
                     ]
